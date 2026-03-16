@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 @RestController
 @RequestMapping("/api")
@@ -42,6 +43,22 @@ public class DemoController {
             "echo",  processed,
             "rquid", rquid != null ? rquid : "not-set"
         ));
+    }
+
+    /**
+     * Async endpoint – the service method runs on a different thread.
+     * The response body shows the rquid the async thread observed; it must
+     * match the X-Request-ID response header set by the filter.
+     */
+    @GetMapping("/async")
+    public CompletableFuture<ResponseEntity<Map<String, String>>> asyncProcess(
+            @RequestParam String message) {
+        log.info("GET /api/async – request thread rquid={}", MDC.get("rquid"));
+        return demoService.processAsync(message)
+                .thenApply(asyncRquid -> ResponseEntity.ok(Map.of(
+                    "message",    "processed async: " + message,
+                    "asyncRquid", asyncRquid != null ? asyncRquid : "not-set"
+                )));
     }
 
     /** Process endpoint – accepts a JSON body and demonstrates rquid on POST. */

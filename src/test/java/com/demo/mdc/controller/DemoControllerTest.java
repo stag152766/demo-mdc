@@ -12,6 +12,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.*;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -100,6 +101,48 @@ class DemoControllerTest {
 
         assertThat(result.getResponse().getHeader(RequestIdFilter.RQUID_HEADER))
             .isEqualTo(rquid);
+    }
+
+    // ── /api/async ────────────────────────────────────────────────────────────
+
+    @Test
+    void async_rquidPropagatedToWorkerThread() throws Exception {
+        String rquid = "async-rquid-test-001";
+
+        // Step 1: trigger the async handler
+        MvcResult asyncResult = mockMvc.perform(get("/api/async")
+                .param("message", "hello")
+                .header(RequestIdFilter.RQUID_HEADER, rquid))
+            .andExpect(request().asyncStarted())
+            .andReturn();
+
+        // Step 2: dispatch the async result and assert
+        MvcResult result = mockMvc.perform(asyncDispatch(asyncResult))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.asyncRquid").value(rquid))
+            .andReturn();
+
+        assertThat(result.getResponse().getHeader(RequestIdFilter.RQUID_HEADER))
+            .isEqualTo(rquid);
+    }
+
+    @Test
+    void async_generatedRquidPropagatedWhenNoHeaderProvided() throws Exception {
+        // Step 1
+        MvcResult asyncResult = mockMvc.perform(get("/api/async").param("message", "test"))
+            .andExpect(request().asyncStarted())
+            .andReturn();
+
+        String headerRquid = asyncResult.getResponse().getHeader(RequestIdFilter.RQUID_HEADER);
+        assertThat(headerRquid).isNotBlank();
+
+        // Step 2
+        MvcResult result = mockMvc.perform(asyncDispatch(asyncResult))
+            .andExpect(status().isOk())
+            .andReturn();
+
+        // asyncRquid seen on the worker thread must equal the header value
+        assertThat(result.getResponse().getContentAsString()).contains(headerRquid);
     }
 
     @Test
